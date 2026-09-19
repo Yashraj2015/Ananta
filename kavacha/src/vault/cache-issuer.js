@@ -1,147 +1,33 @@
 ﻿'use strict';
 /**
- * cache-issuer.js — Issues cached credentials for long-lived service tokens
- * (ctrl-plane nodes and Valkey/Redis nodes).
- *
- * These credential types do not support per-request ephemeral issuance, so
- * we return the static service key with a 1-hour TTL refresh from vault.
- * The cache is purely for latency (avoiding repeated vault lookups) and
- * allows instant invalidation via clearSimpleCache().
- *
- * Keys and service tokens are never logged — only nodeCode and expiry.
+ * cache-issuer.js — Issues cached credentials for Supabase ctrl-plane and Redis/Valkey.
+ * Ctrl-plane: 1-hour cache (service role key, no rotation needed from our side)
+ * Redis/Valkey: 30-day rotation (URL stored in vault, periodic rotation)
  */
 const { getCredential } = require('./credentials');
-const pino = require('pino');
-
+const pino   = require('pino');
 const logger = pino({ name: 'kavacha-cache', level: process.env.LOG_LEVEL || 'info' });
 
-const DEFAULT_TTL_MS = 60 * 60 * 1000; // 1 hour
+const ctrlCache  = new Map(); // nodeCode -> { serviceKey, url, cachedAt }
+const CTRL_TTL   = 60 * 60 * 1000; // 1 hour
 
-/**
- * @typedef {{ data: object, expiresAtMs: number }} CacheEntry
- * @type {Map<string, CacheEntry>}
- */
-const simpleCache = new Map();
-
-/**
- * Generic cache fetch with configurable TTL.
- * Builds the data object from the vault entry on cache miss.
- *
- * @param {string} nodeCode
- * @param {number} ttlMs
- * @returns {object} - the cached data object (no secrets in log)
- */
-const getCachedCredential = (nodeCode, ttlMs = DEFAULT_TTL_MS) => {
-  const now    = Date.now();
-  const cached = simpleCache.get(nodeCode);
-
-  if (cached && cached.expiresAtMs > now) {
-    logger.debug({ nodeCode }, 'Served credential from cache');
-    return cached.data;
-  }
-
+const issueCtrlCredential = async (nodeCode) => {
   const creds = getCredential(nodeCode);
-  if (!creds) throw new Error(No credential found for node: );
-
-  const expiresAtMs = now + ttlMs;
-  const expiresAt   = new Date(expiresAtMs).toISOString();
-
-  let data;
-  switch (creds.type) {
-    case 'ctrl-plane':
-      if (!creds.url || !creds.serviceKey) {
-        throw new Error(Incomplete ctrl-plane config for );
-      }
-      data = {
-        url:       creds.url,
-        key:       creds.serviceKey,
-        expiresAt,
-      };
-      break;
-
-    case 'redis':
-      if (!creds.url) {
-        throw new Error(Incomplete redis/valkey config for );
-      }
-      data = {
-        url:       creds.url,
-        expiresAt,
-      };
-      break;
-
-    default:
-      throw new Error(Unsupported credential type for cache issuer: );
+  if (!creds || creds.type !== 'ctrl-plane') throw new Error('Invalid ctrl-plane node: ' + nodeCode);
+  const cached = ctrlCache.get(nodeCode);
+  if (cached && (Date.now() - cached.cachedAt) < CTRL_TTL) {
+    return { url: cached.url, serviceKey: cached.serviceKey, expiresAt: new Date(cached.cachedAt + CTRL_TTL).toISOString() };
   }
-
-  simpleCache.set(nodeCode, { data, expiresAtMs });
-  logger.info({ nodeCode, type: creds.type, expiresAt }, 'Issued cached credential');
-
-  return data;
+  ctrlCache.set(nodeCode, { url: creds.url, serviceKey: creds.serviceKey, cachedAt: Date.now() });
+  logger.info({ nodeCode }, 'Ctrl-plane credential issued (1-hr cache)');
+  return { url: creds.url, serviceKey: creds.serviceKey, expiresAt: new Date(Date.now() + CTRL_TTL).toISOString() };
 };
 
-/**
- * Issues a ctrl-plane (Supabase) credential with 1-hour cache.
- * Returns { url, key, expiresAt }.
- *
- * @param {string} nodeCode - e.g. 'node-s1'
- */
-const issueCtrlPlaneCredential = (nodeCode) => {
+const issueRedisCredential = async (nodeCode) => {
   const creds = getCredential(nodeCode);
-  if (!creds || creds.type !== 'ctrl-plane') {
-    throw new Error(Not a ctrl-plane node: );
-  }
-  return getCachedCredential(nodeCode, DEFAULT_TTL_MS);
+  if (!creds || creds.type !== 'redis') throw new Error('Invalid redis node: ' + nodeCode);
+  logger.info({ nodeCode }, 'Valkey credential issued');
+  return { url: creds.url, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() };
 };
 
-/**
- * Issues a Redis/Valkey credential with 1-hour cache.
- * Returns { url, expiresAt }.
- *
- * @param {string} nodeCode - e.g. 'node-vk1'
- */
-const issueRedisCredential = (nodeCode) => {
-  const creds = getCredential(nodeCode);
-  if (!creds || creds.type !== 'redis') {
-    throw new Error(Not a redis/valkey node: );
-  }
-  return getCachedCredential(nodeCode, DEFAULT_TTL_MS);
-};
-
-/**
- * Invalidates the cache for one node or all nodes.
- * Next call will re-fetch fresh from the vault.
- *
- * @param {string|undefined} nodeCode - if omitted, clears all entries
- */
-const clearSimpleCache = (nodeCode) => {
-  if (nodeCode) {
-    simpleCache.delete(nodeCode);
-    logger.info({ nodeCode }, 'Cache cleared for node');
-  } else {
-    simpleCache.clear();
-    logger.info('Cache cleared for all nodes');
-  }
-};
-
-/**
- * Returns cache status (no secret values exposed).
- */
-const getCacheStatus = () => {
-  const now    = Date.now();
-  const result = [];
-  for (const [code, entry] of simpleCache.entries()) {
-    result.push({
-      nodeCode:  code,
-      expiresAt: new Date(entry.expiresAtMs).toISOString(),
-      expired:   entry.expiresAtMs <= now,
-    });
-  }
-  return result;
-};
-
-module.exports = {
-  issueCtrlPlaneCredential,
-  issueRedisCredential,
-  clearSimpleCache,
-  getCacheStatus,
-};
+module.exports = { issueCtrlCredential, issueRedisCredential };

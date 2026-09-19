@@ -1,26 +1,30 @@
-const cron = require('node-cron');
+﻿'use strict';
 const { rotateAtlasPassword } = require('./atlas-rotator');
-const { getCredential } = require('../vault/credentials');
-const pino = require('pino');
-const logger = pino({ name: 'kavacha-schedule' });
+const { getCredential, listNodes } = require('../vault/credentials');
+const { audit } = require('../audit/logger');
+const pino   = require('pino');
+const logger = pino({ name: 'kavacha-schedule', level: process.env.LOG_LEVEL || 'info' });
 
-const startSchedule = () => {
-  cron.schedule('0 0 */7 * *', async () => {
-    logger.info('[KAVACHA] Rotation schedule triggered');
-    const nodes = ['node-a1', 'node-a2', 'node-a3'];
-    for (const code of nodes) {
-      const cred = getCredential(code);
-      if (cred) {
-        logger.info(`[KAVACHA] Rotation scheduled for ${code}`);
-        try {
-          await rotateAtlasPassword(code);
-        } catch (e) {
-          logger.error(`[KAVACHA] Rotation failed for ${code}`);
-        }
-      }
-    }
-  });
-  logger.info('[KAVACHA] Schedules started');
-};
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+function startSchedule() {
+  // Rotate all Atlas nodes every 7 days
+  const atlasNodes = listNodes().filter(n => n.type === 'atlas');
+  logger.info({ count: atlasNodes.length }, 'Starting rotation schedules');
+
+  for (const { nodeCode } of atlasNodes) {
+    // Stagger rotations by node index to avoid simultaneous API calls
+    const index   = parseInt(nodeCode.replace('node-a', '')) || 1;
+    const stagger = (index - 1) * 60 * 60 * 1000; // 1hr apart
+
+    setTimeout(() => {
+      setInterval(() => {
+        rotateAtlasPassword(nodeCode).catch(err => {
+          logger.error({ nodeCode, err: err.message }, 'Scheduled rotation failed');
+        });
+      }, SEVEN_DAYS_MS);
+    }, stagger);
+  }
+}
 
 module.exports = { startSchedule };

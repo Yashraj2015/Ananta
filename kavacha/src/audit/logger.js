@@ -1,36 +1,22 @@
-const crypto = require('crypto');
-const fs = require('fs');
+﻿'use strict';
+const fs   = require('fs');
 const path = require('path');
+const pino = require('pino');
+const logger = pino({ name: 'kavacha-audit', level: 'info' });
 
-const logFile = path.join(__dirname, '../../audit.log');
-const memoryLog = [];
-let prevHash = crypto.createHash('sha256').update('genesis').digest('hex');
+const LOG_PATH = process.env.KAVACHA_AUDIT_LOG || path.join(__dirname, '../../audit.log');
+let stream;
 
 const initAuditLog = () => {
-  if (!fs.existsSync(logFile)) {
-    fs.writeFileSync(logFile, '');
-  }
+  stream = fs.createWriteStream(LOG_PATH, { flags: 'a', encoding: 'utf8' });
+  stream.on('error', (err) => logger.error({ err: err.message }, 'Audit log write error'));
+  logger.info({ path: LOG_PATH }, 'Audit log initialized');
 };
 
-const appendAuditLog = (entry) => {
-  const ts = new Date().toISOString();
-  const data = { ts, ...entry };
-  
-  const hash = crypto.createHash('sha256')
-    .update(prevHash + JSON.stringify(data))
-    .digest('hex');
-  
-  data.hash = hash;
-  prevHash = hash;
-
-  memoryLog.unshift(data);
-  if (memoryLog.length > 1000) memoryLog.pop();
-
-  fs.appendFileSync(logFile, JSON.stringify(data) + '\n');
+// Append-only audit entry. Codenames only — never real URIs.
+const audit = (event, context = {}) => {
+  const entry = JSON.stringify({ ts: new Date().toISOString(), event, ...context }) + '\n';
+  if (stream) stream.write(entry);
 };
 
-const getRecentAuditLogs = (n = 20) => {
-  return memoryLog.slice(0, n);
-};
-
-module.exports = { initAuditLog, appendAuditLog, getRecentAuditLogs };
+module.exports = { initAuditLog, audit };

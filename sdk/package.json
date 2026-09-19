@@ -1,17 +1,30 @@
-{
+﻿{
   "name": "@ananta/js",
   "version": "0.1.0",
-  "description": "Ananta DB JavaScript/TypeScript SDK",
+  "description": "Official Ananta DB JavaScript/TypeScript SDK",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch"
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts","import": "./dist/index.mjs","require": "./dist/index.js"
+    }
   },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "jest"
+  },
+  "keywords": ["database", "ananta", "sdk", "realtime"],
+  "license": "MIT",
   "dependencies": {
     "cross-fetch": "^4.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
   }
 }
+

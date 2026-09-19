@@ -1,22 +1,38 @@
-import { AnantaClient, ClientOptions } from './types';
-import { CollectionClientImpl } from './collection';
-import { TableClientImpl } from './table';
-import { AuthClientImpl } from './auth';
-import { StorageClientImpl } from './storage';
-import { RealtimeChannelImpl } from './realtime';
+﻿import { Collection } from './collection';
+import { Table }      from './table';
+import { AuthClient } from './auth';
+import { StorageClient } from './storage';
+import { RealtimeClient } from './realtime';
+import { AnantaFetch } from './fetch';
+import type { AnantaClientOptions, AnantaClient } from './types';
 
-export function createClient(options: ClientOptions): AnantaClient {
-  const baseUrl = options.apiUrl || 'https://api.ananta.io';
-  const headers = {
-    'X-Ananta-Key': options.apiKey,
-    'X-Ananta-Project': options.projectId,
-    'Content-Type': 'application/json'
-  };
+/**
+ * createClient(url, key, options?)
+ *
+ * Creates an Ananta DB client. Fully compatible with Supabase SDK surface.
+ *
+ * @example
+ * const ananta = createClient('https://dave.db.ananta.io', 'your-anon-key');
+ * const { data } = await ananta.collection('users').find({ name: 'Alice' });
+ * const { data } = await ananta.from('users').select('*').eq('name', 'Alice');
+ */
+export function createClient(url: string, key: string, options: AnantaClientOptions = {}): AnantaClient {
+  const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+  const fetcher = new AnantaFetch(baseUrl, key, options.fetch);
+  const auth    = new AuthClient(baseUrl, key, fetcher);
+  const storage = new StorageClient(baseUrl, key, fetcher);
+  const realtime = new RealtimeClient(baseUrl, key);
+
   return {
-    collection: (name) => new CollectionClientImpl(baseUrl, headers, name),
-    table: (name) => new TableClientImpl(baseUrl, headers, name),
-    auth: new AuthClientImpl(baseUrl, headers),
-    storage: new StorageClientImpl(baseUrl, headers),
-    channel: (name) => new RealtimeChannelImpl(baseUrl, options.apiKey, name)
-  };
+    // MongoDB-style: ananta.collection('users').find(...)
+    collection: (name: string) => new Collection(name, fetcher, auth),
+    // Supabase-style alias: ananta.from('users').select('*')
+    from:       (name: string) => new Table(name, fetcher, auth),
+    auth,
+    storage,
+    channel:    (name: string) => realtime.channel(name),
+    realtime,
+    // Direct table access alias for SQL users
+    table:      (name: string) => new Table(name, fetcher, auth),
+  } as unknown as AnantaClient;
 }

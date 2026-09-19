@@ -1,15 +1,22 @@
+﻿'use strict';
 const express = require('express');
-const { getRecentAuditLogs } = require('../audit/logger');
+const router  = express.Router();
+const { listNodes } = require('../vault/credentials');
 
-const healthz = express.Router();
-healthz.get('/', (req, res) => res.json({ status: 'ok' }));
+const healthz = (req, res) => {
+  res.json({ status: 'ok', ts: Date.now(), nodes: listNodes().length });
+};
 
-const audit = express.Router();
-audit.get('/', (req, res) => {
-  if (req.headers['x-kavacha-admin'] !== 'true') {
-    return res.status(403).json({ error: 'Forbidden' });
+const auditRecent = (req, res) => {
+  const fs   = require('fs');
+  const path = require('path');
+  const logPath = process.env.KAVACHA_AUDIT_LOG || path.join(__dirname, '../../audit.log');
+  try {
+    const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n').slice(-20);
+    res.json({ recent: lines.map(l => { try { return JSON.parse(l); } catch { return l; } }) });
+  } catch {
+    res.json({ recent: [] });
   }
-  res.json(getRecentAuditLogs(20));
-});
+};
 
-module.exports = { healthz, audit };
+module.exports = { healthz, audit: auditRecent };

@@ -1,0 +1,228 @@
+﻿version: "3.9"
+
+# Ananta DB — Full Stack Docker Compose
+# All services identified by codenames — zero vendor names in container names
+#
+# Copy deploy/.env.example to deploy/.env, fill values, then:
+#   docker compose --env-file .env -f deploy/docker-compose.yml up -d
+
+services:
+
+  # ── Kavacha Credential Vault (runs first — everything depends on it) ──
+  kavacha:
+    build:
+      context: ./kavacha
+      dockerfile: Dockerfile
+    container_name: ananta-kavacha
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4001"
+      LOG_LEVEL: info
+      KAVACHA_AUDIT_LOG: /app/audit.log
+      KAVACHA_ALLOWED_IPS: ${KAVACHA_ALLOWED_IPS}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL}
+      NODE_A1_URI: ${NODE_A1_URI}
+      NODE_A2_URI: ${NODE_A2_URI}
+      NODE_A3_URI: ${NODE_A3_URI}
+      NODE_A1_GROUP_ID: ${NODE_A1_GROUP_ID}
+      NODE_A1_ADMIN_PUBLIC_KEY: ${NODE_A1_ADMIN_PUBLIC_KEY}
+      NODE_A1_ADMIN_PRIVATE_KEY: ${NODE_A1_ADMIN_PRIVATE_KEY}
+      NODE_A1_ADMIN_USERNAME: ${NODE_A1_ADMIN_USERNAME:-admin}
+      NODE_N1_ADMIN_URI: ${NODE_N1_ADMIN_URI}
+      NODE_N2_ADMIN_URI: ${NODE_N2_ADMIN_URI}
+      NODE_N3_ADMIN_URI: ${NODE_N3_ADMIN_URI}
+      NODE_S1_URL: ${NODE_S1_URL}
+      NODE_S1_SERVICE_KEY: ${NODE_S1_SERVICE_KEY}
+      NODE_S2_URL: ${NODE_S2_URL}
+      NODE_S2_SERVICE_KEY: ${NODE_S2_SERVICE_KEY}
+      NODE_R2A_ACCESS_KEY: ${NODE_R2A_ACCESS_KEY}
+      NODE_R2A_SECRET_KEY: ${NODE_R2A_SECRET_KEY}
+      NODE_R2A_ENDPOINT: ${NODE_R2A_ENDPOINT}
+      NODE_R2A_BUCKET: ${NODE_R2A_BUCKET}
+      NODE_R2B_ACCESS_KEY: ${NODE_R2B_ACCESS_KEY}
+      NODE_R2B_SECRET_KEY: ${NODE_R2B_SECRET_KEY}
+      NODE_R2B_ENDPOINT: ${NODE_R2B_ENDPOINT}
+      NODE_R2B_BUCKET: ${NODE_R2B_BUCKET}
+      NODE_VK1_URL: ${NODE_VK1_URL}
+      NODE_VK2_URL: ${NODE_VK2_URL}
+    volumes:
+      - kavacha-audit:/app
+    networks:
+      - ananta-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Core Server (API + Files + Health) ────────────────────────────
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ananta-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT_API: "8080"
+      PORT_FILES: "8081"
+      PORT_HEALTH: "3001"
+      KAVACHA_URL: http://kavacha:4001
+      KAVACHA_SHARED_SECRET: ${KAVACHA_SHARED_SECRET}
+      CTRL_PLANE_URL: ${NODE_S1_URL}
+      CTRL_PLANE_KEY: ${NODE_S1_SERVICE_KEY}
+      INTERNAL_BROKER_KEY: ${INTERNAL_BROKER_KEY}
+      ANANTA_JWT_SECRET: ${ANANTA_JWT_SECRET}
+      ANANTA_FILES_CDN: ${ANANTA_FILES_CDN}
+      CF_STREAM_ACCOUNT: ${CF_STREAM_ACCOUNT}
+      CF_STREAM_TOKEN: ${CF_STREAM_TOKEN}
+      GOTRUE_URL: http://auth-server:9999
+      LOG_LEVEL: info
+    depends_on:
+      kavacha:
+        condition: service_healthy
+    networks:
+      - ananta-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── MongoDB Wire Protocol Multiplexer (mongobetween — Apache 2.0) ─
+  data-gateway-mongo:
+    build:
+      context: ./mongobetween
+      dockerfile: Dockerfile
+    container_name: ananta-mongo-gw
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    command: ["-listen=tcp://0.0.0.0:27017", "-uri=${NODE_A1_URI}", "-log-level=warn"]
+    networks:
+      - ananta-net
+
+  # ── PostgreSQL Connection Pooler (PgCat — MIT, Rust) ─────────────
+  sql-pooler:
+    image: ghcr.io/postgresml/pgcat:latest
+    container_name: ananta-sql-pooler
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./deploy/config/pgcat.toml:/etc/pgcat/pgcat.toml:ro
+    networks:
+      - ananta-net
+
+  # ── MongoDB→PG Translator (FerretDB — Apache 2.0) ─────────────────
+  doc-translator:
+    image: ghcr.io/ferretdb/ferretdb:latest
+    container_name: ananta-doc-translator
+    restart: unless-stopped
+    environment:
+      FERRETDB_POSTGRESQL_URL: ${NODE_N1_ADMIN_URI}
+      FERRETDB_LOG_LEVEL: warn
+    networks:
+      - ananta-net
+
+  # ── Auto-REST API (PostgREST — MIT) ──────────────────────────────
+  rest-api:
+    image: postgrest/postgrest:v12.2.0
+    container_name: ananta-rest-api
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: ${NODE_N1_ADMIN_URI}
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: ananta_anon
+      PGRST_JWT_SECRET: ${ANANTA_JWT_SECRET}
+      PGRST_SERVER_PORT: "3000"
+      PGRST_LOG_LEVEL: warn
+    networks:
+      - ananta-net
+
+  # ── Auth Server (GoTrue — MIT, Supabase fork rebranded) ───────────
+  auth-server:
+    build:
+      context: ./gotrue
+      dockerfile: Dockerfile
+    container_name: ananta-auth
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: "0.0.0.0"
+      GOTRUE_API_PORT: "9999"
+      GOTRUE_DB_DRIVER: postgres
+      DATABASE_URL: ${NODE_N1_ADMIN_URI}
+      GOTRUE_SITE_URL: ${ANANTA_SITE_URL:-https://ananta.io}
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_JWT_SECRET: ${ANANTA_JWT_SECRET}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_SMTP_HOST: ${SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+    networks:
+      - ananta-net
+
+  # ── Realtime Server (Supabase Realtime — Apache 2.0) ─────────────
+  realtime-server:
+    build:
+      context: ./realtime
+      dockerfile: Dockerfile
+    container_name: ananta-realtime
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${NEON_HOST}
+      DB_PORT: "5432"
+      DB_NAME: ${NEON_DB_NAME:-postgres}
+      DB_USER: ${NEON_USER}
+      DB_PASSWORD: ${NEON_PASSWORD}
+      DB_SSL: "true"
+      PORT: "4000"
+      SECRET_KEY_BASE: ${ANANTA_JWT_SECRET}
+      APP_NAME: ananta-realtime
+      REPLICATION_MODE: STREAM
+    networks:
+      - ananta-net
+
+  # ── Private Uptime Monitor (Uptime Kuma — MIT) ───────────────────
+  # INTERNAL ONLY — never exposed publicly
+  # All monitors configured by codename — no vendor URLs visible
+  private-monitor:
+    image: louislam/uptime-kuma:latest
+    container_name: ananta-private-monitor
+    restart: unless-stopped
+    volumes:
+      - uptime-data:/app/data
+    networks:
+      - ananta-net
+    # NOTE: NOT in ports — access via: docker exec -it ananta-private-monitor sh
+    # or add reverse proxy with auth for internal team access only
+
+  # ── Ananta Studio (Supabase Studio fork — Apache 2.0) ────────────
+  studio:
+    build:
+      context: ./supabase/apps/studio
+      dockerfile: Dockerfile
+    container_name: ananta-studio
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: ${NODE_S1_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NODE_S1_ANON_KEY}
+      STUDIO_PG_META_URL: http://server:8080/v1/meta
+    networks:
+      - ananta-net
+
+networks:
+  ananta-net:
+    driver: bridge
+
+volumes:
+  kavacha-audit:
+  uptime-data:

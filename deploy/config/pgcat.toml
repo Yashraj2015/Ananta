@@ -1,0 +1,25 @@
+﻿# PgCat — PostgreSQL connection pooler config
+# Used as the Ananta SQL wire protocol proxy (port 5432)
+# All pool names use codenames — no vendor names exposed
+
+[general]
+host = "0.0.0.0"
+port = 5432
+enable_prometheus_exporter = false
+log_level = "warn"
+
+[pools.ananta_main]
+pool_mode = "transaction"
+default_role = "any"
+query_parser_enabled = true
+query_parser_read_write_splitting = true
+
+[[pools.ananta_main.users]]
+username = "ananta_app"
+password = "${PG_APP_PASSWORD}"
+pool_size = 20
+statement_timeout = 30000
+
+[[pools.ananta_main.shards]]
+servers = [["${NEON_HOST}", 5432, "primary"]]
+database = "${NEON_DB_NAME}"
