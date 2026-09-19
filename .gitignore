@@ -57,3 +57,21 @@ desktop.ini
 uploads/
 tmp/
 temp/
+
+# ── Cloned OSS dependencies (not committed — clone separately) ──
+FFmpeg/
+FerretDB/
+bullmq/
+gotrue/
+mongobetween/
+pgcat/
+postgrest/
+realtime/
+sharp/
+supabase/
+supabase-js/
+uptime-kuma/
+valkey/
+
+# ── npm lockfiles for root (managed per workspace) ────────────
+package-lock.json

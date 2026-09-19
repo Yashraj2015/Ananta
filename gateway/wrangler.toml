@@ -3,12 +3,17 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
 [[kv_namespaces]]
+binding = "TENANT_CACHE"
+id = "REPLACE_WITH_KV_ID_TENANT_CACHE"
+
+[[kv_namespaces]]
 binding = "ANANTA_KV"
-id = "REPLACE_WITH_KV_ID"
+id = "REPLACE_WITH_KV_ID_ANANTA"
 
 [vars]
 ANANTA_DOMAIN = "ananta.io"
 ANANTA_SERVER_URL = "https://server.ananta.io"
+RATE_LIMIT_NAMESPACE = "rate-limit"
 
 [[routes]]
 pattern = "api.ananta.io/*"

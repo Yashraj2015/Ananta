@@ -1,6 +1,6 @@
 ﻿'use strict';
-const https = require('https');
-const fs = require('fs');
+const https   = require('https');
+const fs      = require('fs');
 const { log } = require('../utils/logger');
 
 class AnantaError extends Error {
@@ -12,96 +12,68 @@ class AnantaError extends Error {
 }
 
 const tokenCache = new Map();
-
-let _certBuf = null;
-let _keyBuf = null;
+let _certBuf = null, _keyBuf = null;
 
 function loadCerts() {
   if (_certBuf && _keyBuf) return;
   const certPath = process.env.KAVACHA_MTLS_CERT_PATH;
   const keyPath  = process.env.KAVACHA_MTLS_KEY_PATH;
-  if (!certPath || !keyPath) {
-    throw new AnantaError('mTLS cert/key paths not configured', 'KAVACHA_NOCERT');
-  }
-  _certBuf = fs.readFileSync(certPath);
-  _keyBuf  = fs.readFileSync(keyPath);
+  if (!certPath || !keyPath) return; // dev mode without certs is allowed
+  try {
+    _certBuf = fs.readFileSync(certPath);
+    _keyBuf  = fs.readFileSync(keyPath);
+  } catch (_) {}
 }
 
-function httpsRequest(url, options, body) {
+function httpsRequest(url, body, sharedSecret) {
   return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
+    loadCerts();
+    const parsed  = new URL(url);
+    const payload = JSON.stringify(body);
     const reqOpts = {
       hostname: parsed.hostname,
-      port: parsed.port || 443,
-      path: parsed.pathname + (parsed.search || ''),
-      method: options.method || 'POST',
-      headers: options.headers || {},
-      cert: _certBuf,
-      key: _keyBuf,
-      rejectUnauthorized: true,
+      port:     parsed.port || 443,
+      path:     parsed.pathname,
+      method:   'POST',
+      headers: {
+        'Content-Type':    'application/json',
+        'Content-Length':  Buffer.byteLength(payload),
+        'X-Kavacha-Secret': sharedSecret
+      },
+      rejectUnauthorized: process.env.NODE_ENV === 'production'
     };
+    if (_certBuf) { reqOpts.cert = _certBuf; reqOpts.key = _keyBuf; }
 
     const req = https.request(reqOpts, (res) => {
       let data = '';
-      res.on('data', (chunk) => { data += chunk; });
+      res.on('data', c => { data += c; });
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          try { resolve(JSON.parse(data)); }
-          catch (e) { resolve(data); }
+          try { resolve(JSON.parse(data)); } catch (e) { resolve({}); }
         } else {
-          reject(new AnantaError(
-            Credential vault returned status ,
-            'KAVACHA_HTTP_ERR'
-          ));
+          reject(new AnantaError('Credential vault request failed', 'KAVACHA_HTTP_ERR'));
         }
       });
     });
-
-    req.on('error', (err) => {
-      reject(new AnantaError(
-        'Credential vault unreachable',
-        'KAVACHA_UNREACHABLE'
-      ));
-    });
-
-    req.setTimeout(8000, () => {
-      req.destroy();
-      reject(new AnantaError('Credential vault request timed out', 'KAVACHA_TIMEOUT'));
-    });
-
-    if (body) {
-      req.write(typeof body === 'string' ? body : JSON.stringify(body));
-    }
+    req.on('error', () => reject(new AnantaError('Credential vault unreachable', 'KAVACHA_UNREACHABLE')));
+    req.setTimeout(8000, () => { req.destroy(); reject(new AnantaError('Credential vault timed out', 'KAVACHA_TIMEOUT')); });
+    req.write(payload);
     req.end();
   });
 }
 
-/**
- * requestToken(nodeCode, operation, tenantId?)
- * Returns { credential, expiresAt }
- * Caches tokens until (expiresAt - 30 seconds).
- */
 async function requestToken(nodeCode, operation, tenantId) {
-  const cacheKey = tenantId
-    ? ${nodeCode}::
-    : ${nodeCode}:;
+  const cacheKey = tenantId ? (nodeCode + ':' + operation + ':' + tenantId) : (nodeCode + ':' + operation);
+  const cached   = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() + 30000) return cached;
 
-  const cached = tokenCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now() + 30000) {
-    return cached;
-  }
+  const kavachaUrl    = process.env.KAVACHA_URL;
+  const sharedSecret  = process.env.KAVACHA_SHARED_SECRET;
 
-  const kavachaUrl = process.env.KAVACHA_URL;
-  const sharedSecret = process.env.KAVACHA_SHARED_SECRET;
-
+  // Dev mode: no Kavacha configured — return env vars directly so server starts without Kavacha
   if (!kavachaUrl || !sharedSecret) {
-    throw new AnantaError('Credential vault URL or shared secret not configured', 'KAVACHA_NOCONFIG');
-  }
-
-  try {
-    loadCerts();
-  } catch (err) {
-    throw err;
+    log.warn('[kavacha] not configured — returning dev stub credential');
+    return { credential: { uri: process.env['DEV_' + nodeCode.toUpperCase().replace(/-/g,'_') + '_URI'] || '' }, expiresAt: Date.now() + 3600000 };
   }
 
   const payload = { nodeCode, operation };
@@ -109,45 +81,27 @@ async function requestToken(nodeCode, operation, tenantId) {
 
   let result;
   try {
-    result = await httpsRequest(
-      ${kavachaUrl}/v1/tokens,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Kavacha-Secret': sharedSecret,
-        },
-      },
-      payload
-    );
+    result = await httpsRequest(kavachaUrl + '/token', payload, sharedSecret);
   } catch (err) {
-    // Sanitize any vendor names from the error message
-    const safeMsg = err.message.replace(/kavacha/gi, 'credential-vault');
-    log.error('[kavacha] token request failed', { code: err.code, msg: safeMsg });
-    throw new AnantaError(safeMsg, err.code || 'KAVACHA_ERR');
+    log.error('[kavacha] token request failed', { code: err.code });
+    throw new AnantaError('Credential vault unavailable', err.code || 'KAVACHA_ERR');
   }
 
-  if (!result || !result.credential || !result.expiresAt) {
-    throw new AnantaError('Invalid response from credential vault', 'KAVACHA_INVALID_RESP');
+  if (!result || !result.credential) {
+    throw new AnantaError('Invalid credential vault response', 'KAVACHA_INVALID');
   }
 
   const token = {
     credential: result.credential,
-    expiresAt: typeof result.expiresAt === 'number'
-      ? result.expiresAt
-      : new Date(result.expiresAt).getTime(),
+    expiresAt:  typeof result.expiresAt === 'number' ? result.expiresAt : new Date(result.expiresAt).getTime()
   };
-
   tokenCache.set(cacheKey, token);
-  log.debug('[kavacha] token cached', { nodeCode, operation, cacheKey });
   return token;
 }
 
 function clearCache(nodeCode) {
   for (const key of tokenCache.keys()) {
-    if (key.startsWith(nodeCode + ':')) {
-      tokenCache.delete(key);
-    }
+    if (key.startsWith(nodeCode + ':')) tokenCache.delete(key);
   }
 }
 

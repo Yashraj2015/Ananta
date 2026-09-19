@@ -1,13 +1,15 @@
-const nodeStates = new Map();
+﻿'use strict';
+const registry = require('../directory/registry');
 
 function isWriteAllowed(nodeCode) {
-  const state = nodeStates.get(nodeCode) || 'ACTIVE';
-  return state === 'ACTIVE';
+  const node = registry.getNode(nodeCode);
+  return node ? node.status === 'ACTIVE' : false;
 }
 
 function getActiveWriteNode(type) {
-  // Logic to get active node by type
-  return 'node-a1';
+  if (type === 'mongo') return registry.getActiveAtlasNode();
+  if (type === 'pg')    return registry.getActiveNeonNode();
+  return null;
 }
 
 module.exports = { isWriteAllowed, getActiveWriteNode };
