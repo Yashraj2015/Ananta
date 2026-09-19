@@ -1,92 +1,59 @@
-# ═══════════════════════════════════════════════════════════════
-# Ananta DB — .gitignore
-# CRITICAL: No credentials, no vendor names in committed code
-# ═══════════════════════════════════════════════════════════════
-
-# Environment files — NEVER commit real credentials
-.env
-.env.local
-.env.production
-.env.*
-!.env.example
-
-# Kavacha certificates — NEVER commit
-kavacha/certs/*.pem
-kavacha/certs/*.key
-kavacha/certs/*.crt
-kavacha/certs/*.p12
-kavacha/certs/*.pfx
-
-# Node
+﻿# ── Dependencies ──────────────────────────────────────────
 node_modules/
+.pnp
+.pnp.js
+
+# ── Build outputs ─────────────────────────────────────────
 dist/
 build/
-.next/
 out/
+.next/
+.nuxt/
+.svelte-kit/
 
-# Go binaries
-*.exe
-*.test
-/bin/
+# ── Environment files (NEVER commit real credentials) ─────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
 
-# Rust/PgCat build artifacts
-target/
+# ── TLS Certificates (NEVER commit) ──────────────────────
+certs/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
 
-# Elixir/Realtime
-_build/
-deps/
-*.beam
-
-# Logs — codenames only, still don't commit
-*.log
+# ── Logs ─────────────────────────────────────────────────
 logs/
+*.log
+npm-debug.log*
 
-# OS
+# ── Package managers ──────────────────────────────────────
+.yarn/cache
+.yarn/unplugged
+
+# ── OS ────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# IDE
+# ── Editors ───────────────────────────────────────────────
 .vscode/settings.json
 .idea/
 *.swp
 
-# Test coverage
-coverage/
-.nyc_output/
+# ── Runtime ───────────────────────────────────────────────
+*.pid
+*.pid.lock
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# ── Cloudflare / Wrangler ─────────────────────────────────
+.wrangler/
+.dev.vars
 
-# Temporary files
+# ── Temp uploads ─────────────────────────────────────────
+uploads/
 tmp/
 temp/
-.tmp/
-
-# Docker volumes (local)
-docker/volumes/
-
-# pnpm
-.pnpm-store/
-pnpm-lock.yaml
-
-# Turbo cache
-.turbo/
-
-# Vercel
-.vercel/
-
-# Wrangler (CF Workers)
-.wrangler/
-
-# BullMQ / Redis dump
-dump.rdb
-
-# Sharp prebuilds (auto-downloaded)
-node_modules/sharp/build/
-
-# Internal notes that might contain vendor names
-INTERNAL_NOTES.md
-VENDOR_MAP.md

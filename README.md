@@ -1,49 +1,76 @@
-# Ananta DB
+﻿# Ananta DB — Production-Grade Database Platform
 
-> A modern, multi-model cloud database platform. Collections, tables, files, auth, and realtime — all in one place. Built for developers who refuse to be locked in.
+## Overview
+Ananta is an independent, multi-protocol database platform competing directly with Firebase, Supabase, MongoDB Atlas, and PlanetScale.
 
-## What is Ananta?
+- **MongoDB Wire Protocol** (:27017) — Mongoose, MongoDB drivers, Compass compatible
+- **PostgreSQL Wire Protocol** (:5432) — Prisma, Django, Rails, psql compatible  
+- **REST API** (:8080) — Any HTTP client, @ananta/js SDK
+- **File Storage** (:8081) — S3-compatible, with automatic compression
 
-Ananta DB is an independent cloud database platform that gives your application:
+## Architecture
 
-- **Collections** — Schema-free document store (NoSQL)
-- **Tables** — Full relational SQL database
-- **Files** — Object storage with automatic media optimization
-- **Auth** — User management, JWT, social logins
-- **Realtime** — Live WebSocket subscriptions
-- **MongoDB compat** — Connect existing Mongoose apps with zero code changes
+`
+Users → Cloudflare Edge → Ananta Server → Kavacha Vault → Backends
+`
 
-Connect via SQL (`:5432`), MongoDB wire protocol (`:27017`), REST API, or the `@ananta/js` SDK.
+All backend credentials live exclusively in Kavacha (a separate credential vault).
+Ananta's source code contains zero vendor names — infrastructure is identified by codenames only.
 
-## Repository Structure
+## Monorepo Structure
 
-```
-Ananta/
-├── studio/          # Ananta Studio — web dashboard
-├── sdk/             # @ananta/js — JavaScript/TypeScript SDK
-├── server/          # Core server — multiplexers, API, file processing
-├── kavacha/         # Credential vault — dynamic secret management
-├── gateway/         # Cloudflare Workers — global edge layer
-├── auth/            # Ananta Auth Server
-├── realtime/        # Ananta Realtime Server
-├── shim/            # LibreChat integration shim
-└── www/             # Ananta marketing website
-```
+| Directory | Purpose |
+|-----------|---------|
+| server/ | Core Node.js server (API, MongoDB proxy, Files) |
+| kavacha/ | Credential vault (mTLS, scoped tokens, rotation) |
+| gateway/ | Cloudflare Workers edge (WAF, rate limit, routing) |
+| sdk/ | @ananta/js TypeScript SDK |
+| shim/ | LibreChat pre-start integration shim |
+| supabase/ | Supabase Studio fork (Ananta Studio dashboard) |
+| supabase-js/ | supabase-js fork → @ananta/js base |
+| gotrue/ | GoTrue fork → Ananta Auth server |
+| ealtime/ | Supabase Realtime fork → Ananta Realtime |
+| FerretDB/ | MongoDB → PostgreSQL translation layer |
+| pgcat/ | PostgreSQL connection pooler (Rust) |
+| postgrest/ | Auto-REST from PostgreSQL schema |
+| mongobetween/ | MongoDB wire protocol multiplexer (Go) |
+| alkey/ | Redis-compatible cache (BSD-3-Clause) |
+| ullmq/ | Redis-backed job queue |
+| uptime-kuma/ | Private internal monitoring (never exposed) |
+| sharp/ | Image compression library |
+| FFmpeg/ | Video transcoding (system-installed) |
 
-## Getting Started
+## Quick Start (Development)
 
-```bash
-# Install dependencies
-npm install
+\\\ash
+# 1. Copy env files
+cp server/.env.example server/.env
+cp kavacha/.env.example kavacha/.env
 
-# Set up environment
-cp .env.example .env
-# Fill in your configuration
+# 2. Add your credentials to both .env files
 
-# Start development
-npm run dev
-```
+# 3. Install dependencies
+cd server && npm install
+cd ../kavacha && npm install
+cd ../gateway && npm install
+cd ../sdk && npm install
+
+# 4. Start Kavacha (separate terminal)
+cd kavacha && npm start
+
+# 5. Start Ananta Server
+cd server && npm run dev
+\\\
+
+## Security Model
+
+- **Kavacha**: All backend credentials live here. Ananta only knows KAVACHA_URL + mTLS cert.
+- **Codenames**: All backends identified as 
+ode-a1, 
+ode-n1, etc. in all logs and code.
+- **Credential rotation**: Atlas 7-day, Neon 15-min temp roles, R2 15-min presigned.
+- **Error sanitization**: All vendor names stripped from any outbound error messages.
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE)
+Proprietary. All rights reserved. Open-source components used under their respective licenses (Apache 2.0, MIT, BSD-3-Clause).

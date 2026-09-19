@@ -1,0 +1,16 @@
+{
+  "name": "@ananta/gateway",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "typescript": "^5.0.0",
+    "@cloudflare/workers-types": "^4.0.0"
+  },
+  "dependencies": {
+    "itty-router": "^4.0.0"
+  }
+}

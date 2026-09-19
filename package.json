@@ -1,28 +1,23 @@
-{
+﻿{
   "name": "ananta",
   "version": "0.1.0",
+  "description": "Ananta DB — Independent multi-protocol database platform",
   "private": true,
-  "description": "Ananta DB — Multi-model cloud database platform",
   "workspaces": [
     "server",
     "kavacha",
     "gateway",
-    "shim",
-    "sdk"
+    "sdk",
+    "shim"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=server",
-    "build": "npm run build --workspace=server",
-    "start": "npm run start --workspace=server",
+    "dev:server": "npm run dev --workspace=server",
     "dev:kavacha": "npm run dev --workspace=kavacha",
-    "dev:gateway": "npm run dev --workspace=gateway",
-    "lint": "eslint .",
-    "test": "npm run test --workspaces"
+    "build:sdk": "npm run build --workspace=sdk",
+    "build:gateway": "npm run build --workspace=gateway",
+    "start": "concurrently \"npm run dev:kavacha\" \"npm run dev:server\""
   },
-  "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=10.0.0"
-  },
-  "author": "Ananta DB",
-  "license": "Apache-2.0"
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
 }
