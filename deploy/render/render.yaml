@@ -1,0 +1,42 @@
+﻿# deploy/render/render.yaml
+# Drop this in your Ananta repo root and connect to Render
+services:
+  - type: web
+    name: ananta-server
+    runtime: docker
+    dockerfilePath: ./server/Dockerfile
+    plan: starter          # upgrade to standard for production
+    region: singapore      # closest to India
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT_HEALTH
+        value: "3001"
+      - key: PORT_API
+        value: "8080"
+      - key: PORT_FILES
+        value: "8081"
+      - key: PORT_MONGO
+        value: "27017"
+      - key: LOG_LEVEL
+        value: info
+      - key: KAVACHA_URL
+        sync: false        # fill in Render dashboard after deploying Kavacha
+      - key: KAVACHA_SHARED_SECRET
+        sync: false
+      - key: ANANTA_JWT_SECRET
+        sync: false
+      - key: INTERNAL_BROKER_KEY
+        sync: false
+      - key: CTRL_PLANE_URL
+        sync: false
+      - key: CTRL_PLANE_KEY
+        sync: false
+      - key: ANANTA_FILES_CDN
+        sync: false
+      - key: GOTRUE_URL
+        sync: false

@@ -75,3 +75,9 @@ valkey/
 
 # ── npm lockfiles for root (managed per workspace) ────────────
 package-lock.json
+
+# ── Local dev credentials — NEVER commit ──
+.env
+server/.env
+kavacha/.env
+
