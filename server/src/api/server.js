@@ -17,6 +17,7 @@ app.use('/v1/auth',     require('./routes/auth'));
 app.use('/v1/internal', require('./routes/internal'));
 
 // Protected routes
+app.use('/v1/auth/google', googleOAuthRouter);
 app.use('/v1/admin', adminRouter);
 app.use('/v1/data',  authenticate, require('./routes/collections'));
 
