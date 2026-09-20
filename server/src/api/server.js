@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const express = require('express');
 const helmet  = require('helmet');
 const cors    = require('cors');
@@ -17,6 +17,7 @@ app.use('/v1/auth',     require('./routes/auth'));
 app.use('/v1/internal', require('./routes/internal'));
 
 // Protected routes
+app.use('/v1/admin', adminRouter);
 app.use('/v1/data',  authenticate, require('./routes/collections'));
 
 // Health (also at /v1/health for CF Workers to check)
