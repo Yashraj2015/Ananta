@@ -95,27 +95,35 @@ async function upsertUser(email, name, avatar, googleSub) {
     const isAdminEmail = ADMIN_EMAILS.includes(email.toLowerCase());
     const role = (isFirstUser || isAdminEmail) ? 'admin' : 'user';
 
-    // Upsert into customers table
+    // Upsert — id is TEXT NOT NULL (no pg default), use JS UUID
+    const newId = crypto.randomUUID();
     await pool.query(`
-      INSERT INTO customers (email, name, avatar, google_sub, provider, role, plan, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, 'google', $5, 'free', NOW(), NOW())
+      INSERT INTO customers (
+        id, email, name, avatar, google_sub, provider, role, plan,
+        status, created_at, updated_at
+      )
+      VALUES (
+        $6, $1, $2, $3, $4, 'google', $5, 'free',
+        'active', NOW(), NOW()
+      )
       ON CONFLICT (email) DO UPDATE SET
         name       = EXCLUDED.name,
         avatar     = EXCLUDED.avatar,
         google_sub = EXCLUDED.google_sub,
         role       = CASE
-          WHEN customers.role = 'admin' THEN 'admin'  -- don't downgrade admins
+          WHEN customers.role = 'admin' THEN 'admin'
           ELSE EXCLUDED.role
         END,
         updated_at = NOW()
-    `, [email, name, avatar, googleSub, role]);
+    `, [email, name || email, avatar, googleSub, role, newId]);
 
-    // Fetch the final role from DB (in case they were already admin)
-    const { rows } = await pool.query(`SELECT role, plan FROM customers WHERE email = $1`, [email]);
+    // Fetch final role (in case they were already admin in DB)
+    const { rows } = await pool.query(
+      `SELECT role, plan FROM customers WHERE email = $1`, [email]
+    );
     return rows[0] ?? { role, plan: 'free' };
   } catch (err) {
-    // If customers table doesn't have google_sub/avatar columns yet, fall back gracefully
-    console.warn('[auth] DB upsert failed, using email-based role:', err.message);
+    console.warn('[auth] DB upsert failed, falling back to email-based role. Error:', err.message, err.code);
     const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'user';
     return { role, plan: 'free' };
   }
