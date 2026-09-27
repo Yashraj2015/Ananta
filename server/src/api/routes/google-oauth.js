@@ -177,19 +177,9 @@ router.get('/callback', async (req, res) => {
     // 4. Issue Ananta JWT
     const jwt = makeJWT({ sub, email, name, avatar: picture, role, plan, provider: 'google' });
 
-    // 5. Set cookies
-    const cookieOpts = 'Path=/; SameSite=Lax; Max-Age=604800'; // 7 days
-    res.setHeader('Set-Cookie', [
-      `ananta-token=${jwt}; ${cookieOpts}; HttpOnly`,
-      `ananta-user=${encodeURIComponent(JSON.stringify({ email, name, avatar: picture, role, plan }))}; ${cookieOpts}`,
-    ]);
-
-    // 6. Redirect to Studio with token so it can bootstrap session
-    const dest = role === 'admin'
-      ? `${STUDIO_URL}/admin?auth_token=${jwt}`
-      : `${STUDIO_URL}/project/default?auth_token=${jwt}`;
-
-    res.redirect(dest);
+    // 5. Redirect to Studio /auth/callback — it stores the token on its own domain
+    //    (cookies set at :8080 are NOT sent to :3003 in dev — use URL token instead)
+    res.redirect(`${STUDIO_URL}/auth/callback?token=${jwt}&role=${role}`);
   } catch (err) {
     console.error('[google-oauth] callback error:', err.message);
     res.redirect(`${STUDIO_URL}/sign-in?error=oauth_failed`);
