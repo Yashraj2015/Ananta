@@ -1,4 +1,7 @@
-'use strict'
+const fs = require('fs')
+const path = require('path')
+
+const content = `'use strict'
 /**
  * GET /v1/metrics  - full system metrics: CPU, RAM, disk, request counters
  * GET /v1/metrics/live - lightweight: cpu + ram only
@@ -71,9 +74,9 @@ function getDisk() {
       try {
         if (process.platform === 'win32') {
           let totalFree = 0, totalSize = 0
-          stdout.split('\n').forEach(line => {
+          stdout.split('\\n').forEach(line => {
             const cols = line.trim().split(',')
-            if (cols.length >= 3 && /^\d+$/.test(cols[1]) && /^\d+$/.test(cols[2])) {
+            if (cols.length >= 3 && /^\\d+$/.test(cols[1]) && /^\\d+$/.test(cols[2])) {
               totalFree += Number(cols[1])
               totalSize += Number(cols[2])
             }
@@ -86,7 +89,7 @@ function getDisk() {
             total_gb: Math.round(totalSize / 1073741824 * 100) / 100
           })
         } else {
-          const cols = stdout.trim().split(/\s+/)
+          const cols = stdout.trim().split(/\\s+/)
           const total = Number(cols[1]) * 1024
           const used  = Number(cols[2]) * 1024
           resolve({
@@ -130,3 +133,8 @@ router.get('/live', async (req, res) => {
 })
 
 module.exports = { router, countRequest }
+`
+
+const file = path.join('d:\\\\Smars\\\\Smars\\\\Ananta\\\\server\\\\src\\\\api\\\\routes\\\\metrics.js')
+fs.writeFileSync(file, content, { encoding: 'utf8', flag: 'w' })
+console.log('Written', file)
