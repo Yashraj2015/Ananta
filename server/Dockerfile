@@ -1,30 +1,30 @@
-﻿# Ananta DB — Core Server
-# Production Dockerfile (Render-compatible, persistent Linux)
-FROM node:22-bookworm-slim
-
-# Install system FFmpeg for video processing
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
-COPY package.json package-lock.json* ./
+# Install dependencies first (cache this layer separately)
+COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Copy source
+# Copy source code
 COPY src/ ./src/
+COPY migrations/ ./migrations/
 
 # Create non-root user
-RUN useradd -r -s /bin/false ananta && chown -R ananta:ananta /app
+RUN addgroup -S ananta && adduser -S ananta -G ananta
 USER ananta
 
-EXPOSE 3001 8080 8081 27017
+# Expose all service ports
+EXPOSE 8080 8081 3001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:3001/healthz || exit 1
+ENV NODE_ENV=production
+
+# Default port bindings
+ENV PORT_API=8080
+ENV PORT_FILES=8081
+ENV PORT_HEALTH=3001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "src/index.js"]
