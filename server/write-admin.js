@@ -1,4 +1,6 @@
-'use strict';
+const fs = require('fs')
+
+const content = `'use strict';
 /**
  * Admin API Routes - /v1/admin/*
  * Protected by INTERNAL_BROKER_KEY header
@@ -159,3 +161,11 @@ router.get('/stats', async (req, res) => {
 });
 
 module.exports = router;
+`
+
+fs.writeFileSync(
+  'd:\\\\Smars\\\\Smars\\\\Ananta\\\\server\\\\src\\\\api\\\\routes\\\\admin\\\\index.js',
+  content,
+  { encoding: 'utf8' }
+)
+console.log('Written admin routes')

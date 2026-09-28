@@ -182,17 +182,21 @@ router.get('/callback', async (req, res) => {
     // 3. Upsert user in ctrl-plane DB (handles first-user-admin)
     const { role, plan } = await upsertUser(email, name, picture, sub);
 
-    // 4. Issue Ananta JWT
+    // 4. Provision tenant resources on first login (non-blocking — doesn't fail the login)
+    const { provisionTenant } = require('../provisioner');
+    provisionTenant(email).catch(e => console.warn('[provision] non-fatal error:', e.message));
+
+    // 5. Issue Ananta JWT
     const jwt = makeJWT({ sub, email, name, avatar: picture, role, plan, provider: 'google' });
 
-    // 5. Redirect to Studio /auth/callback — it stores the token on its own domain
-    //    (cookies set at :8080 are NOT sent to :3003 in dev — use URL token instead)
+    // 6. Redirect to Studio /auth/callback — it stores the token on its own domain
     res.redirect(`${STUDIO_URL}/auth/callback?token=${jwt}&role=${role}`);
   } catch (err) {
     console.error('[google-oauth] callback error:', err.message);
     res.redirect(`${STUDIO_URL}/sign-in?error=oauth_failed`);
   }
 });
+
 
 // ─── GET /v1/auth/me — return current user from JWT ──────────────────────────
 router.get('/me', (req, res) => {
