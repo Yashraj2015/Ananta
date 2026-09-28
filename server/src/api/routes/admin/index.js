@@ -30,9 +30,8 @@ router.get('/nodes', async (req, res) => {
 router.post('/nodes', async (req, res) => {
   const { nodeCode, nodeType, label, region, credentials, metadata } = req.body;
   if (!nodeCode || !nodeType) return res.status(400).json({ error: { message: 'nodeCode and nodeType required' } });
-  const VALID_TYPES = ['atlas', 'pg-neon', 'ctrl-plane', 'r2', 'redis'];
-  if (!VALID_TYPES.includes(nodeType)) {
-    return res.status(400).json({ error: { message: 'nodeType must be one of: ' + VALID_TYPES.join(', ') } });
+  if (typeof nodeType !== 'string' || nodeType.length > 50) {
+    return res.status(400).json({ error: { message: 'Invalid nodeType' } });
   }
   const { error } = await ctrl.upsertNode({ nodeCode, nodeType, label, region, credentials, metadata });
   if (error) return res.status(502).json({ error: { message: error } });
