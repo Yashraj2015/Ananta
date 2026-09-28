@@ -106,6 +106,12 @@ app.use('/v1/data', authenticate, require('./routes/collections'));
 // API key tokens (protected by JWT inside the router)
 app.use('/v1/tokens', require('./routes/tokens'));
 
+// Billing (Razorpay — public plans, auth-protected order/verify)
+app.use('/v1/billing', require('./routes/billing'));
+
+// Audit log (protected by JWT)
+app.use('/v1/audit', require('./routes/audit'));
+
 // Multi-platform protocol adapters (PostgREST /rest/v1/*, GraphQL, etc.)
 app.use('/', protocolsRouter);
 
